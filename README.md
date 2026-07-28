@@ -15,7 +15,8 @@
 > A Linux anti-forensics automation tool developed for cybersecurity research, digital forensics education, and controlled laboratory environments. It demonstrates common anti-forensics techniques to support learning, security testing, and incident response training in authorized environments only.
 
 ---
-![Uploading Screenshot_29-Jul_05-18-38_1287.png…]()
+<img width="945" height="1043" alt="Screenshot_29-Jul_05-18-38_1287" src="https://github.com/user-attachments/assets/cd867df3-ff76-4edc-97e6-eaa74e67b14c" />
+
 
 
 ## 📖 Overview
